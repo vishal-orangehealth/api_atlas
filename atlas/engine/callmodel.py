@@ -56,8 +56,11 @@ def build_call(*, method: str, url: str, req_headers: dict | None, req_data, sta
                resp_headers: dict | None, resp_data, resource_type: str | None = "fetch",
                duration_ms: float | None = None, ts: float | None = None) -> dict:
     parts = urlsplit(url)
-    req_headers = {str(k).lower(): str(v) for k, v in (req_headers or {}).items()}
-    resp_headers = {str(k).lower(): str(v) for k, v in (resp_headers or {}).items()}
+    # HTTP/2 pseudo-headers (:authority, :method, :path, :scheme, :status) aren't real header
+    # fields - Playwright exposes them in allHeaders(), but neither `requests` nor Node's http
+    # client will let you set a header name containing ":", so generated tests would crash.
+    req_headers = {str(k).lower(): str(v) for k, v in (req_headers or {}).items() if not str(k).startswith(":")}
+    resp_headers = {str(k).lower(): str(v) for k, v in (resp_headers or {}).items() if not str(k).startswith(":")}
     req_kind, req_body = parse_body(req_headers.get("content-type"), req_data)
     resp_kind, resp_body = parse_body(resp_headers.get("content-type"), resp_data)
     if resp_kind == "form":  # responses are never form-encoded in practice

@@ -23,7 +23,8 @@ NOISE_HOST_SUFFIXES = (
     "clevertap-prod.com", "webengage.com", "onesignal.com", "cloudflareinsights.com", "posthog.com",
 )
 
-NOISE_PATH = re.compile(r"/(collect|beacon|pixel|telemetry|rum|__webpack_hmr|sockjs-node)(/|$)", re.I)
+NOISE_PATH = re.compile(
+    r"/(collect|beacon|pixel|telemetry|rum|__webpack_hmr|sockjs-node|__nextjs[\w-]*)(/|$)", re.I)
 
 KEEP_CONTENT_TYPES = ("json", "xml", "text/plain", "graphql")
 

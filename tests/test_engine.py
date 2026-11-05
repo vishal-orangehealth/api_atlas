@@ -31,6 +31,22 @@ def stored(calls):
     return out
 
 
+# ------------------------------------------------------------------ callmodel
+
+def test_http2_pseudo_headers_are_dropped():
+    """Playwright's allHeaders() includes HTTP/2 pseudo-headers; neither `requests` nor Node's
+    http client accept a header name with a colon, so generated tests would crash on them."""
+    c = build_call(method="GET", url="https://api.shop.co/me",
+                   req_headers={":authority": "api.shop.co", ":method": "GET", ":path": "/me",
+                                ":scheme": "https", "authorization": "Bearer tok"},
+                   req_data=None, status=200,
+                   resp_headers={":status": "200", "content-type": "application/json"},
+                   resp_data=json.dumps({"ok": True}))
+    assert not any(k.startswith(":") for k in c["req_headers"])
+    assert not any(k.startswith(":") for k in c["resp_headers"])
+    assert c["req_headers"]["authorization"] == "Bearer tok"
+
+
 # ------------------------------------------------------------------ filter
 
 def test_noise_and_hosts():
@@ -46,6 +62,9 @@ def test_noise_and_hosts():
     assert classify(url="https://api.shop.co.in/v1/me", **{**kw, "method": "OPTIONS"}) == "drop"
     assert classify(url="https://api.shop.co.in/logo.png", **{**kw, "resource_type": "image"}) == "drop"
     assert classify(url="https://api.shop.co.in/page", **{**kw, "response_content_type": "text/html"}) == "drop"
+    # Next.js's own dev-server error overlay, not a real endpoint of the app being tested
+    assert classify(url="https://api.shop.co.in/__nextjs_original-stack-frames", **kw) == "drop"
+    assert classify(url="https://api.shop.co.in/__nextjs_launch-editor", **kw) == "drop"
 
 
 # ------------------------------------------------------------------ masking
@@ -131,6 +150,16 @@ def test_case_chain_and_variables():
     assert happy["needs_env"] == []
     assert any(v["kind"] == "extract" for v in happy["vars"].values())
     assert happy["selected"] is True
+
+
+def test_old_recordings_with_http2_pseudo_headers_still_generate_clean_requests():
+    """build_call() now strips these at capture time, but sessions recorded before that fix
+    still have them stored - analysis must drop them too so generated tests stay runnable."""
+    calls = flow()
+    calls[2]["req_headers"][":authority"] = "shop.com"
+    a = analyse(calls)
+    products = next(c for c in a["cases"] if c["endpoint"].endswith("/api/products") and c["kind"] == "happy")
+    assert not any(k.startswith(":") for k in products["target"]["headers"])
 
 
 def test_dynamic_values_not_asserted():

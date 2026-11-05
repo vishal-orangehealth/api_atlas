@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "api-atlas"
-version = "0.1.0"
+version = "0.2.0"
 description = "Explore a web app in the browser and get a working, chained API test suite (pytest or Postman)."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -35,6 +35,14 @@ CREATE TABLE IF NOT EXISTS case_overrides (
   data TEXT NOT NULL,
   PRIMARY KEY (session_id, case_id)
 );
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  path TEXT NOT NULL,
+  remote TEXT,
+  default_branch TEXT,
+  created_at REAL NOT NULL
+);
 """
 
 
@@ -157,6 +165,26 @@ class Store:
                 self.db.execute("UPDATE calls SET hidden=? WHERE id=?", (int(not host_allowed(host, allowed)), r["id"]))
             self.db.commit()
 
+    def reclassify_calls(self, sid: str, allowed_hosts: list[str]) -> int:
+        """Re-run the current noise filter against already-stored calls - lets a filter.py
+        update (e.g. a newly recognised noise path) clean up a session recorded before it,
+        without re-exploring. Returns how many calls' hidden state changed."""
+        from .engine.filter import classify
+        with self.lock:
+            rows = self.db.execute("SELECT id, hidden, data FROM calls WHERE session_id=?", (sid,)).fetchall()
+            changed = 0
+            for r in rows:
+                c = json.loads(r["data"])
+                verdict = classify(method=c["method"], url=c["url"], resource_type=c.get("resource_type"),
+                                   status=c.get("status"), response_content_type=c["resp_headers"].get("content-type"),
+                                   allowed_hosts=allowed_hosts)
+                new_hidden = int(verdict != "keep")
+                if new_hidden != r["hidden"]:
+                    self.db.execute("UPDATE calls SET hidden=? WHERE id=?", (new_hidden, r["id"]))
+                    changed += 1
+            self.db.commit()
+        return changed
+
     # ---- test case edits
     def overrides(self, sid: str) -> dict[str, dict]:
         with self.lock:
@@ -171,3 +199,34 @@ class Store:
                             (sid, case_id, json.dumps(current)))
             self.db.commit()
         return current
+
+    # ---- projects
+    def create_project(self, name: str, path: str, remote: str | None, default_branch: str | None) -> dict:
+        pid = uuid.uuid4().hex[:12]
+        with self.lock:
+            self.db.execute(
+                "INSERT INTO projects (id, name, path, remote, default_branch, created_at) VALUES (?,?,?,?,?,?)",
+                (pid, name, path, remote, default_branch, time.time()))
+            self.db.commit()
+        return self.get_project(pid)
+
+    def get_project(self, pid: str) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
+        return dict(row) if row else None
+
+    def list_projects(self) -> list[dict]:
+        with self.lock:
+            rows = self.db.execute("SELECT * FROM projects ORDER BY created_at DESC").fetchall()
+        return [dict(r) for r in rows]
+
+    def update_project(self, pid: str, **fields) -> None:
+        cols = ", ".join(f"{k}=?" for k in fields)
+        with self.lock:
+            self.db.execute(f"UPDATE projects SET {cols} WHERE id=?", (*fields.values(), pid))
+            self.db.commit()
+
+    def delete_project(self, pid: str) -> None:
+        with self.lock:
+            self.db.execute("DELETE FROM projects WHERE id=?", (pid,))
+            self.db.commit()

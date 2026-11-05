@@ -431,8 +431,8 @@ class CaseBuilder:
         # headers
         headers_ir = {}
         for name, value in call["req_headers"].items():
-            if name in SEND_HEADER_DENY or name.startswith("sec-"):
-                continue
+            if name in SEND_HEADER_DENY or name.startswith("sec-") or name.startswith(":"):
+                continue  # HTTP/2 pseudo-headers from old recordings, pre-dating the capture-side filter
             if name == "content-type" and call["req_kind"] != "text":
                 continue  # the HTTP client sets it for JSON and form bodies
             if name in ("x-requested-with",):

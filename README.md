@@ -32,14 +32,27 @@ atlas demo
    and timestamps are marked) and suggested tests. Happy-path tests are selected; validation,
    not-found and "without auth" checks are there to opt into. Rename tests or change the expected
    status inline.
-3. **Export.** Download pytest or Postman. Each test runs its own setup chain (sign up → log in →
-   create cart → place order) so it passes on its own, every run:
+3. **Export, or run it for real.** Download pytest or Postman, or just click **Run tests**:
+   it runs the Postman collection with Newman right there and shows pass/fail per test folder in
+   plain English ("Expected 201, got 409: email already exists"), with a masked response snippet
+   and a one-click "expect 409 instead" fix for a status mismatch. Every test runs its own setup
+   chain (sign up → log in → create cart → place order) so it passes on its own, every run:
    - sign-up flows get a fresh unique email/phone each run
-   - masked values for existing accounts are read from env vars (`ATLAS_EMAIL`, `ATLAS_PASSWORD`, …)
+   - masked values for existing accounts are read from env vars (`ATLAS_EMAIL`, `ATLAS_PASSWORD`, …) -
+     if any are missing, Run tests asks for them first and passes them as `--env-var`, never to disk
    - ids and tokens are extracted from responses at run time, never hard-coded
    - dynamic fields are only type-checked, never compared to recorded values
+4. **Or turn it into a PR against your real suite.** Open (or clone) the repo your team's Postman
+   collection actually lives in. API Atlas scans it for collections/environments, matches their
+   requests to what you explored by method + path shape, and shows a coverage badge per endpoint
+   (not covered / happy path only / happy + negative). Pick which of the recorded calls to add,
+   preview the change - a real `git diff`, Newman run on just the new folder, coverage before/after -
+   then push a branch and open a PR. It never touches your own checkout (always a scratch
+   `git worktree`), never pushes to your default branch, and never edits or deletes an existing
+   request. New chain variables are prefixed `atlas_` and match the repo's own naming/scope
+   convention, so they never collide with the team's.
 
-## What's in v0.1
+## What's in v0.2
 
 | Area | Included |
 |---|---|
@@ -48,9 +61,11 @@ atlas demo
 | Safety | masking before storage, salted value hashes (salt never written to disk) |
 | Tests | happy path, missing field, wrong type, empty body, unknown id, without auth |
 | Output | pytest + requests suite, Postman v2.1 collection + environment |
+| Run & verify | Newman run in-app, plain-English failures, one-click status fix |
+| Project mode | open/clone a repo, scan its Postman files, coverage badges, style-matched PRs |
 
-Not yet: importing existing suites, coverage overlay, contract diff, RestAssured/k6 output,
-in-app test runs, AI suggestions.
+Not yet: importing existing pytest suites, "export only missing", contract diff, RestAssured/k6
+output, AI suggestions.
 
 ## Develop
 
@@ -59,8 +74,10 @@ pip install -e ".[dev]"
 pytest              # unit tests + a real headless-browser capture of the demo app
 ```
 
-Set `ATLAS_NEWMAN=/path/to/newman` (or put `newman` on PATH) to also run the generated Postman
-collection in the test suite. Data lives in `~/.api-atlas` (override with `ATLAS_HOME`).
+Set `ATLAS_NEWMAN=/path/to/newman` to pin Newman (otherwise `newman` on PATH, then a pinned
+`npx newman@6`). Data lives in `~/.api-atlas` (override with `ATLAS_HOME`); set `GITHUB_TOKEN` to
+let "Push & open PR" create the PR via the GitHub API instead of falling back to `gh`/a compare
+link - it's read from the environment only, never written anywhere.
 
 ## Layout
 
@@ -68,9 +85,12 @@ collection in the test suite. Data lives in `~/.api-atlas` (override with `ATLAS
 atlas/
   capture.py        Playwright recorder: filter → fingerprint → mask → store
   server.py         FastAPI: REST + websocket + UI
-  store.py          SQLite (masked data only)
-  engine/           filter, mask, values (fingerprints), deps (links), normalize, schema, analysis
+  store.py          SQLite (masked data only; also the `projects` table for project mode)
+  engine/           filter, mask, values (fingerprints), deps (links), normalize, schema, analysis,
+                     newman_report (Newman's JSON report -> plain-English pass/fail)
   gen/              pytest_gen, postman_gen
+  project/          postman_parse, scan, coverage, style, style_adapt, edit, git_ops, github_pr -
+                     see CLAUDE.md for how they fit together
   static/           web UI (no build step)
   demo/             Atlas Shop demo app
 ```

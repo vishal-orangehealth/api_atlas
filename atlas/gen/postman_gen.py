@@ -172,6 +172,33 @@ def _request_item(step: dict, specs: dict, case_id: str, idx: int, is_target: bo
     }
 
 
+def item_index(cases: list[dict]) -> dict[str, dict]:
+    """Map a generated request item's id -> {case_id, is_target, step_label, step_no},
+    mirroring generate()'s id scheme. step_label/step_no let a failure say exactly which
+    call in the chain broke, not just which case."""
+    idx: dict[str, dict] = {}
+    for case in cases:
+        steps = case["setup"] + [case.get("target", {})]
+        n_setup = len(case["setup"])
+        for i, step in enumerate(steps):
+            if isinstance(step, dict):
+                label = step.get("label") or case.get("title", "")
+            else:
+                label = step or case.get("title", "")  # a simplified case (e.g. from the API) may carry setup as plain label strings
+            idx[_uid(case["id"], i)] = {"case_id": case["id"], "is_target": i == n_setup,
+                                        "step_label": label, "step_no": i + 1}
+    return idx
+
+
+def case_items(case: dict) -> list[dict]:
+    """The Postman request items (setup steps, then the target) for a single case - what
+    generate() builds internally for one folder, exposed for previewing one case on its own."""
+    specs = case["vars"]
+    items = [_request_item(s, specs, case["id"], i, False) for i, s in enumerate(case["setup"])]
+    items.append(_request_item(case["target"], specs, case["id"], len(items), True))
+    return items
+
+
 def generate(cases: list[dict], hosts: list[str], suite_name: str = "app") -> dict[str, str]:
     folders = []
     env_vars: dict[str, str] = {}
