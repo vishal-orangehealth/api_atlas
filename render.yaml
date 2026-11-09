@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: api-atlas
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: ATLAS_HOME
+        value: /data
+      - key: ATLAS_HEADLESS
+        value: "1"
+    healthCheckPath: /
